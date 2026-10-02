@@ -21,11 +21,21 @@ export function createServer(env=process.env,fetcher=fetch){
     if(!key||!token||token.length<24)return send(503,{error:'Server secrets are not configured'});
     const expected='/s/'+token+'/chat',actual=(req.url||'').split('?')[0];
     const a=Buffer.from(actual),b=Buffer.from(expected);
-    if(a.length!==b.length||!timingSafeEqual(a,b))return send(404,{error:'Not found'});
+    const publicChat=actual==='/public/chat';
+    if(!publicChat&&(a.length!==b.length||!timingSafeEqual(a,b)))return send(404,{error:'Not found'});
     if(req.headers.origin!==origin)return send(403,{error:'Origin not allowed'});
     res.setHeader('Access-Control-Allow-Origin',origin);res.setHeader('Vary','Origin');
-    if(req.method==='OPTIONS'){res.writeHead(204,{'Access-Control-Allow-Methods':'POST, OPTIONS','Access-Control-Allow-Headers':'Content-Type','Access-Control-Max-Age':'600'});return res.end();}
+    if(req.method==='OPTIONS'){res.writeHead(204,{'Access-Control-Allow-Methods':'POST, OPTIONS','Access-Control-Allow-Headers':'Content-Type, Authorization','Access-Control-Max-Age':'600'});return res.end();}
     if(req.method!=='POST')return send(405,{error:'Method not allowed'});
+    if(publicChat){
+      const auth=req.headers.authorization||'';
+      if(!auth.startsWith('Bearer ')||auth.length>8192)return send(401,{error:'Sign in required'});
+      try{
+        const verification=await fetcher('https://femvxshhwxrdjfdlocee.supabase.co/auth/v1/user',{headers:{apikey:'sb_publishable_pHTIL0TCQGQfzLRMcgcRfg_BkYmjqOb',Authorization:auth},signal:AbortSignal.timeout(10000)});
+        if(!verification.ok)return send(401,{error:'Invalid or expired session'});
+        const user=await verification.json();if(!user.id||(!user.email_confirmed_at&&!user.phone_confirmed_at))return send(403,{error:'Verify your account first'});
+      }catch{return send(503,{error:'Authentication service unavailable'});}
+    }
     if(!(req.headers['content-type']||'').startsWith('application/json'))return send(415,{error:'JSON required'});
     const today=new Date().toISOString().slice(0,10);if(today!==day){day=today;used=0;}
     if(active>=2||used>=Number(env.DAILY_LIMIT||100)||Date.now()-lastCall<1500)return send(429,{error:'Request limit reached, try later'});
