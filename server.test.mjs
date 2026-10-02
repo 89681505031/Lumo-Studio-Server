@@ -2,6 +2,11 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {createServer,sanitize} from './server.mjs';
 test('drops invalid actions and clamps values',()=>{assert.deepEqual(sanitize({reply:'ok',actions:[{trackId:1,parameter:'gain',value:999},{trackId:99,parameter:'gain',value:2},{trackId:1,parameter:'mute',value:1},{trackId:1,parameter:'pan',value:NaN}]},[{id:1}]),{reply:'ok',actions:[{trackId:1,parameter:'gain',value:6}]});});
+test('public chat validates sessions before contacting Groq',async()=>{
+ let calls=0;const server=createServer({GROQ_API_KEY:'test-key',STUDIO_TOKEN:'test-token-long-enough-for-security',STUDIO_ORIGIN:'https://studio.example'},async()=>{calls++;return new Response('{}',{status:401});});
+ await new Promise(r=>server.listen(0,'127.0.0.1',r));const url='http://127.0.0.1:'+server.address().port+'/public/chat';
+ try{assert.equal((await fetch(url,{method:'POST',headers:{Origin:'https://studio.example'}})).status,401);assert.equal(calls,0);assert.equal((await fetch(url,{method:'POST',headers:{Origin:'https://studio.example',Authorization:'Bearer invalid'}})).status,401);assert.equal(calls,1);}finally{await new Promise(r=>server.close(r));}
+});
 test('requires secret route and origin, keeps provider key server side',async()=>{
  let providerCall;
  const server=createServer({GROQ_API_KEY:'test-key',STUDIO_TOKEN:'test-token-long-enough-for-security',STUDIO_ORIGIN:'https://studio.example'},async(url,opts)=>{providerCall={url,opts};return new Response(JSON.stringify({choices:[{message:{content:JSON.stringify({reply:'Готово',actions:[{trackId:1,parameter:'gain',value:2}]})}}]}));});

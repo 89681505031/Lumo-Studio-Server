@@ -1,6 +1,10 @@
 import http from 'node:http';
 import {timingSafeEqual} from 'node:crypto';
-import {pathToFileURL} from 'node:url';
+import {pathToFileURL,fileURLToPath} from 'node:url';
+import {readFile} from 'node:fs/promises';
+import path from 'node:path';
+const publicRoot=fileURLToPath(new URL('./public/',import.meta.url));
+const mime={'.html':'text/html; charset=utf-8','.js':'text/javascript','.mjs':'text/javascript','.css':'text/css','.wasm':'application/wasm','.txt':'text/plain'};
 
 export const bounds={gain:[-40,6],pan:[-1,1],low:[-18,18],mid:[-18,18],high:[-18,18],hp:[20,500],threshold:[-50,0],ratio:[1,12],reverb:[0,60],delay:[0,50]};
 export function sanitize(result,tracks){
@@ -12,19 +16,26 @@ const instruction=`Ты звукорежиссёр Lumo Studio. Отвечай �
 
 export function createServer(env=process.env,fetcher=fetch){
   const origin=env.STUDIO_ORIGIN||'https://lumo-recording-studio.alexpimenov98gg.chatgpt.site';
+  const origins=new Set([origin,'https://lumo-studio-ai.onrender.com']);
   const key=env.GROQ_API_KEY,token=env.STUDIO_TOKEN;
   const model=env.GROQ_MODEL||'openai/gpt-oss-120b';
   let active=0,used=0,day='',lastCall=0;
   return http.createServer(async(req,res)=>{
     const send=(status,value)=>{res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});res.end(JSON.stringify(value));};
     if(req.url==='/health'&&req.method==='GET')return send(200,{status:'ok',configured:Boolean(key&&token),service:'Lumo Studio chat'});
+    if(req.method==='GET'||req.method==='HEAD'){
+      let pathname;try{pathname=decodeURIComponent(new URL(req.url,'http://localhost').pathname)}catch{return send(400,{error:'Invalid path'})}
+      const file=path.resolve(publicRoot,'.'+(pathname==='/'?'/index.html':pathname));
+      if(!file.startsWith(publicRoot+path.sep))return send(404,{error:'Not found'});
+      try{const data=await readFile(file);res.writeHead(200,{'Content-Type':mime[path.extname(file)]||'application/octet-stream','X-Content-Type-Options':'nosniff','Cache-Control':'no-cache'});return res.end(req.method==='HEAD'?undefined:data)}catch{return send(404,{error:'Not found'})}
+    }
     if(!key||!token||token.length<24)return send(503,{error:'Server secrets are not configured'});
     const expected='/s/'+token+'/chat',actual=(req.url||'').split('?')[0];
     const a=Buffer.from(actual),b=Buffer.from(expected);
     const publicChat=actual==='/public/chat';
     if(!publicChat&&(a.length!==b.length||!timingSafeEqual(a,b)))return send(404,{error:'Not found'});
-    if(req.headers.origin!==origin)return send(403,{error:'Origin not allowed'});
-    res.setHeader('Access-Control-Allow-Origin',origin);res.setHeader('Vary','Origin');
+    if(!origins.has(req.headers.origin))return send(403,{error:'Origin not allowed'});
+    res.setHeader('Access-Control-Allow-Origin',req.headers.origin);res.setHeader('Vary','Origin');
     if(req.method==='OPTIONS'){res.writeHead(204,{'Access-Control-Allow-Methods':'POST, OPTIONS','Access-Control-Allow-Headers':'Content-Type, Authorization','Access-Control-Max-Age':'600'});return res.end();}
     if(req.method!=='POST')return send(405,{error:'Method not allowed'});
     if(publicChat){
