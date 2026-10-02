@@ -3,7 +3,7 @@ import {timingSafeEqual} from 'node:crypto';
 import {pathToFileURL,fileURLToPath} from 'node:url';
 import {readFile} from 'node:fs/promises';
 import path from 'node:path';
-const publicRoot=fileURLToPath(new URL('./public/',import.meta.url));
+const publicRoot=path.resolve(fileURLToPath(new URL('./public/',import.meta.url)));
 const mime={'.html':'text/html; charset=utf-8','.js':'text/javascript','.mjs':'text/javascript','.css':'text/css','.wasm':'application/wasm','.txt':'text/plain'};
 
 export const bounds={gain:[-40,6],pan:[-1,1],low:[-18,18],mid:[-18,18],high:[-18,18],hp:[20,500],threshold:[-50,0],ratio:[1,12],reverb:[0,60],delay:[0,50]};
