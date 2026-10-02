@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: lumo-studio-ai
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: GROQ_API_KEY
+        sync: false
+      - key: STUDIO_TOKEN
+        generateValue: true
+      - key: STUDIO_ORIGIN
+        value: https://lumo-recording-studio.alexpimenov98gg.chatgpt.site
